@@ -1,0 +1,493 @@
+---
+title: "Statistical analyses"
+author: "An Bui"
+date: "11/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(vegan)
+library(here)
+library(janitor)
+```
+
+### Soil characteristics
+
+#### a. Data
+```{r}
+soil <- read_csv(here::here("data", "soil_data.csv"))
+```
+
+#### b. Analysis of variance
+```{r}
+# nitrogen
+n_aov <- aov(N_p ~ site, data = soil) 
+summary(n_aov)
+TukeyHSD(n_aov)
+
+# carbon
+c_aov <- aov(C_p ~ site, data = soil)
+summary(c_aov)
+TukeyHSD(c_aov)
+
+# phosphorus
+p_aov <- aov(P ~ site, data = soil)
+summary(p_aov)
+TukeyHSD(p_aov)
+
+# organic matter
+om_aov <- aov(OM ~ site, data = soil)
+summary(om_aov)
+TukeyHSD(om_aov)
+
+# total exchangeable cations
+TEC_aov <- aov(TEC ~ site, data = soil)
+summary(TEC_aov)
+TukeyHSD(TEC_aov)
+
+# ppm NO3
+no3_aov <- aov(NO3_ppm ~ site, data = soil)
+summary(no3_aov)
+TukeyHSD(no3_aov)
+
+# ppm NH4
+nh4_aov <- aov(NH4_ppm ~ site, data = soil)
+summary(nh4_aov)
+TukeyHSD(nh4_aov)
+
+# gravimetric water content
+moisture_aov <- aov(GravWContent ~ site, data = soil)
+summary(moisture_aov)
+TukeyHSD(moisture_aov)
+
+# pH
+ph_aov <- aov(pH ~ site, data = soil)
+summary(ph_aov)
+TukeyHSD(ph_aov)
+```
+
+### Fungal community composition
+
+#### a. Data
+```{r}
+# OTU paths
+otu_paths <- read_csv(here::here("data", "otu_paths.csv"))
+
+# fungal abundance
+fun_abund <- read_csv(here::here("data", "fungal_abundance.csv"))
+```
+
+#### b. Species richness
+```{r}
+# create a vector of OTUs that pass the quality filter
+keep_these <- otu_paths %>% 
+  # filter confidence_ranking to only include "highly probable" or "probable" matches
+  filter(confidence_ranking != c("-", "Possible") & notes != "Unassigned") %>% 
+  # extract OTUs as vector
+  pull(OTU_ID) %>% 
+  # add column names "tree" and "site" for easier downstream processing
+  combine(c("tree", "site"), .)
+```
+
+```{r}
+# create a dataframe of abundances for filtered OTUs
+rich_df <- fun_abund[, keep_these] %>% 
+  # make tree ID row names
+  column_to_rownames("tree") %>% 
+  # remove site column
+  select(-site)
+
+# create a dataframe of "metadata" - only tree ID and site type
+rich_meta <- fun_abund[, keep_these] %>% 
+  select(tree, site)
+
+# calculate species richness
+attach(rich_meta)
+
+# use vegan::specpool() on abundance dataframe to calculate species richness for each tree
+tree_rich <- specpool(rich_df, tree) %>% 
+  # make row names a column called "tree"
+  rownames_to_column("tree") %>% 
+  # join with metadata dataframe
+  full_join(rich_meta, .)
+
+# calculate mean species richness per tree per site
+rich_summary <- tree_rich %>% 
+  # group dataframe by site
+  dplyr::group_by(site) %>% 
+  # calculate mean richness per tree per site
+  dplyr::summarize(mean_rich = mean(Species))
+
+# analysis of variance
+rich_aov <- aov(Species ~ site, data = tree_rich)
+summary(rich_aov)
+TukeyHSD(rich_aov)
+```
+
+#### c. Species diversity
+```{r}
+# use vegan::diversity
+shannondiv <- diversity(rich_df) %>% 
+  # make results of diversity into dataframe
+  enframe() %>% 
+  # rename columns for ease of processing
+  dplyr::rename(tree = name, 
+                shan_div = value) %>% 
+  # join with metadata dataframe
+  full_join(rich_meta, .)
+
+# calculate mean shannon diversity per tree per site
+shannondiv_summary <- shannondiv %>% 
+  dplyr::group_by(site) %>% 
+  dplyr::summarize(mean_shandiv = mean(shan_div))
+
+# analysis of variance
+shandiv_aov <- aov(shan_div ~ site, data = shannondiv)
+summary(shandiv_aov)
+```
+
+#### d. Non-metric Multidimensional Scaling (NMDS)
+
+```{r functions}
+# extract OTUs specific to a particular functional group
+# functional groups include: symbiotrophs, ectomycorrhizae, and arbuscular mycorrhizae
+otus <- function(func_group) {
+  otu_paths %>% 
+  dplyr::filter({{ func_group }} == "TRUE" & confidence_ranking != c("-", "Possible") & notes != "Unassigned") %>% 
+  pull(OTU_ID) %>% 
+  combine(c("tree", "site"), .) %>% 
+  fun_abund[, .] %>% 
+  # make sure that no rows have only 0 values (no samples have no symbio OTUs)
+  # add up rows into new column called total
+  dplyr::mutate(total = select(., 3:ncol(.)) %>% rowSums(na.rm = TRUE)) %>% 
+  # filter out empty rows based on total
+  dplyr::filter(total > 0) %>%
+  # get rid of total column by selecting all other columns
+  dplyr::select(-total)
+}
+
+# designate which columns are data and OTUs
+# metadata
+metadata <- function(dataframe) {
+  dataframe %>% 
+    dplyr::select(1:2)
+}
+
+# OTUs
+OTU_matrix <- function(dataframe) {
+  dataframe %>% 
+    column_to_rownames("tree") %>% 
+    dplyr::select(-(1:2))
+}
+
+# metaMDS function from vegan package
+fungi_nmds <- function(dataframe) {
+  metaMDS(dataframe, 
+          # use Bray-Curtis dissimilarity
+          distance = "bray", 
+          # reduce to 2 dimensions
+          k = 2, 
+          # adds small positive value for 0 count
+          zerodist = "add", 
+          # maximum number of iterations
+          maxit = 30)
+}
+
+# plot dataframe
+plot_df <- function(nmds_out, meta_df) {
+  # extract points from NMDS output
+  as_tibble(nmds_out$points) %>% 
+    # combine with metadata and put metadata first
+    bind_cols(meta_df, .) %>% 
+    # set levels
+    dplyr::mutate(site = fct_relevel(site, c("arid", "intermediate", "mesic")))
+}
+
+# plot function
+plot_NMDS <- function(dataframe) {
+  ggplot(dataframe, aes(x = MDS1, y = MDS2, 
+                        fill = site, shape = site)) +
+    geom_point(size = 4, stroke = 0.75, alpha = 0.8) +
+    scale_shape_manual(values = c(24, 21, 22)) +
+    scale_fill_manual(values = c("white", "lightgrey", "black")) +
+    stat_ellipse() +
+    coord_fixed() +
+    theme(plot.background = element_rect("white"),
+          panel.background = element_rect("white"),
+          panel.grid = element_line("grey90"),
+          axis.line = element_line("gray25"),
+          axis.text = element_text(size = 12, color = "gray25"),
+          axis.title = element_text(color = "gray25"),
+          legend.text = element_text(size = 12))
+}
+```
+
+```{r}
+all_meta <- metadata(fun_abund)
+all_matrix <- OTU_matrix(fun_abund[, keep_these])
+
+all_NMDS <- fungi_nmds(all_matrix)
+all_df <- plot_df(all_NMDS, all_meta)
+all_plot <- plot_NMDS(all_df) + labs(title = "All fungi")
+all_plot
+```
+
+```{r}
+all_perm <- adonis(all_matrix ~ site, data = all_meta, method = "bray")
+all_perm
+```
+
+```{r}
+symbio <- otus(tm_symbiotroph)
+
+symbio_meta <- metadata(symbio)
+symbio_matrix <- OTU_matrix(symbio)
+
+symbio_NMDS <- fungi_nmds(symbio_matrix)
+
+symbio_df <- plot_df(symbio_NMDS, symbio_meta)
+
+symbio_plot <- plot_NMDS(symbio_df) + labs(title = "Symbiotrophs")
+symbio_plot
+```
+
+```{r}
+symbio_perm <- adonis(symbio_matrix ~ site, data = symbio_meta, method = "bray")
+symbio_perm
+```
+
+```{r}
+ectos <- otus(g_ectomycorrhizal)
+
+ecto_meta <- metadata(ectos)
+ecto_matrix <- OTU_matrix(ectos)
+
+ecto_NMDS <- fungi_nmds(ecto_matrix)
+
+ecto_df <- plot_df(ecto_NMDS, ecto_meta)
+
+ecto_plot <- plot_NMDS(ecto_df) + labs(title = "Ectomycorrhizae")
+ecto_plot
+```
+
+```{r}
+ecto_perm <- adonis(ecto_matrix ~ site, data = ecto_meta, method = "bray")
+ecto_perm
+```
+
+```{r}
+amf <- otus(g_arbuscular_mycorrhizal)
+
+amf_meta <- metadata(amf)
+amf_matrix <- OTU_matrix(amf)
+
+amf_NMDS <- fungi_nmds(amf_matrix)
+
+amf_df <- plot_df(amf_NMDS, amf_meta)
+
+amf_plot <- plot_NMDS(amf_df) + labs(title = "Arbuscular mycorrhizae")
+amf_plot
+```
+
+```{r}
+amf_perm <- adonis(amf_matrix ~ site, data = amf_meta, method = "bray")
+amf_perm
+```
+
+### Community convergence
+
+For ease of use, example code is for bootstrapping the total fungal community. This repeats for symbiotrophs, arbuscular mycorrhizae (AMF), and ectomycorrhizae. The final section (c. Final data) includes the summarized data for all 1000 bootstraps (mean, standard deviation, and standard error).
+
+#### a. Determine number of OTUs for downsampling
+```{r}
+# which functional group has the lowest number of OTUs?
+all_n <- ncol(all_matrix)
+# 1562
+symb_n <- ncol(symbio_matrix)
+# 553
+AMF_n <- ncol(amf_matrix)
+# 191
+ecto_n <- ncol(ecto_matrix)
+# 91
+
+# store ecto_n as lowest_n
+lowest_n <- ecto_n
+```
+
+#### b. Set up bootstrapping by creating NMDS objects
+```{r eval = FALSE}
+# make an empty list into which to put the output of the loop
+list_nmds <- list()
+
+# for every object in the iteration
+for(i in 1:1000) {
+  # resample lob_matrix for the lowest_n OTUs (91)
+  resample <- all_matrix %>% sample(lowest_n)
+  # perform NMDS on the resampled community
+  do_nmds <- metaMDS(resample, distance = "bray", k = 2, zerodist = "add", maxit = 30)
+  
+  # put output into empty list
+  list_nmds[[i]] <- do_nmds
+}
+```
+
+```{r}
+# find site centroid using vegan::ordihull()
+centroid <- function(meta, nmds_object) {
+  with(meta, ordihull(nmds_object, site, label = TRUE))
+}
+
+# get centroid coordinates into a dataframe
+find_coords <- function(centroid_object, tax_group) {
+  tibble::as_tibble(summary(centroid_object)) %>% 
+    dplyr::mutate(colname = c("MDS1", "MDS2", "area")) %>% 
+    tibble::column_to_rownames("colname") %>% 
+    t() %>% 
+    tibble::as_tibble() %>% 
+    dplyr::mutate(site = c("arid", "intermediate", "mesic"),
+                  type = tax_group)
+}
+
+# distance between points
+dist_fun <- function(point1, point2) {
+  sqrt((point1$MDS1 - point2$MDS1)^2 + (point1$MDS2 - point2$MDS2)^2)
+}
+```
+
+The final product of the following loop is a list of dataframes, each of which is one iteration of the loop. Its contents are the calculation (Euclidean distance between a community and its site centroid) for each tree.
+```{r eval = FALSE}
+list_calc_all <- list()
+
+for(i in 1:1000) {
+  # find distance between centroids
+  # 1. find centroid coordinates
+  cent_coords <- centroid(all_meta, list_nmds[[i]])
+  # 2. turn into data frame
+  centroid_df <- find_coords(cent_coords, "all")
+  # 3. get things into their own dataframe by site
+  arid_cent <- centroid_df %>% filter(site == "arid")
+  int_cent <- centroid_df %>% filter(site == "intermediate")
+  mes_cent <- centroid_df %>% filter(site == "mesic")
+  # 4. find distance between centroids
+  ai_dist <- dist_fun(arid_cent, int_cent)
+  am_dist <- dist_fun(arid_cent, mes_cent)
+  im_dist <- dist_fun(int_cent, mes_cent)
+  
+  # find distance between point and centroid
+  # 1. find coordinates for each point and join with metadata
+  tree_coords <- scores(list_nmds[[i]]) %>% as.data.frame() %>% 
+    rownames_to_column("tree") %>% 
+    full_join(all_meta, ., by = "tree")
+  # 2. put tree coordinates together with the centroid coordinates
+  joined_coords <- full_join(tree_coords, centroid_df, by = "site") %>% 
+    dplyr::rename(cent_MDS1 = MDS1, cent_MDS2 = MDS2) %>% 
+    mutate(dist_t2c = sqrt((cent_MDS1 - NMDS1)^2 + (cent_MDS2 - NMDS2)^2))
+  
+  # do the calculation
+  # 1. arid-int
+  arid_int <- joined_coords %>% 
+    filter(site == "arid") %>% 
+    mutate(calc = ai_dist/dist_t2c,
+           comp = "arid-int")
+  # 2. arid-mesic
+  arid_mesic <- joined_coords %>% 
+    filter(site == "arid") %>% 
+    mutate(calc = am_dist/dist_t2c,
+           comp = "arid-mesic")
+  # 3. int-mesic
+  int_mesic <- joined_coords %>% 
+    filter(site == "intermediate") %>% 
+    mutate(calc = im_dist/dist_t2c,
+           comp = "int-mesic") 
+  # 4. int-arid
+  int_arid <- joined_coords %>% 
+    filter(site == "intermediate") %>% 
+    mutate(calc = ai_dist/dist_t2c,
+           comp = "int-arid") 
+  # 5. mesic-arid
+  mes_arid <- joined_coords %>% 
+    filter(site == "mesic") %>% 
+    mutate(calc = am_dist/dist_t2c,
+           comp = "mes-arid") 
+  # 6. mesic-int
+  mes_int <- joined_coords %>% 
+    filter(site == "mesic") %>% 
+    mutate(calc = im_dist/dist_t2c,
+           comp = "mes_int")
+  
+  # join all those together
+  final_df <- bind_rows(arid_int, arid_mesic, int_mesic, int_arid, mes_arid, mes_int) %>% 
+    select(tree, site, calc, comp) %>% 
+    # group_by(site, comp) %>% 
+    mutate(resample_n = i)
+  
+  list_calc_all[[i]] <- final_df
+}
+```
+
+#### c. Final data
+```{r}
+boot_data <- read_csv(here::here("data", "boot_data-1000.csv"))
+```
+
+### Ectomycorrhizal functional traits
+
+```{r}
+ecto_OTU_traits <- read_csv(here::here("data", "ecto_OTU_traits.csv"))
+```
+
+```{r}
+# create a dataframe where OTUs are in rows, and samples are in columns
+transposed <- fun_abund %>% 
+  select(-site) %>%
+  column_to_rownames("tree") %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rownames_to_column("OTU_ID")
+
+# extract metadata
+fun_metadata <- fun_abund %>% 
+  select(1, 2)
+
+# create a dataframe where trees are in rows and counts for each functional trait are in columns
+sum_traits <- inner_join(ecto_OTU_traits, transposed) %>% 
+  pivot_longer(4:57, names_to = "tree", values_to = "count") %>% 
+  dplyr::group_by(tree, trait, type) %>% 
+  dplyr::summarize(sum = sum(count)) %>% 
+  full_join(fun_metadata, ., by = "tree") %>% 
+  ungroup() %>% 
+  dplyr::select(tree, site, type, sum) %>% 
+  pivot_wider(names_from = "type", values_from = "sum") %>% 
+  clean_names()
+```
+
+#### a. Exploration type
+
+```{r}
+# create contingency tables for each trait
+chitable_et <- sum_traits %>% 
+  dplyr::select(site, long_distance, medium, short) %>% 
+  group_by(site) %>% 
+  summarize_if(is.numeric, sum) %>% 
+  column_to_rownames("site")
+
+chitable_rhizo <- sum_traits %>% 
+  dplyr::select(site, contains("r_")) %>% 
+  group_by(site) %>% 
+  summarize_if(is.numeric, sum) %>% 
+  column_to_rownames("site")
+```
+
+```{r}
+# chi square test
+chitest_et <- stats::chisq.test(chitable_et)
+chitest_et
+
+chitest_rhizo <- stats::chisq.test(chitable_rhizo)
+chitest_rhizo
+```
