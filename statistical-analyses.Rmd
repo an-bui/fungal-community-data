@@ -299,6 +299,44 @@ amf_perm <- adonis(amf_matrix ~ site, data = amf_meta, method = "bray")
 amf_perm
 ```
 
+```{r}
+sapro <- otus(tm_saprotroph)
+
+sapro_meta <- metadata(sapro)
+sapro_matrix <- OTU_matrix(sapro)
+
+sapro_NMDS <- fungi_nmds(sapro_matrix)
+
+sapro_df <- plot_df(sapro_NMDS, sapro_meta)
+
+sapro_plot <- plot_NMDS(sapro_df) + labs(title = "Saprotrophs")
+sapro_plot
+```
+
+```{r}
+sapro_perm <- adonis(sapro_matrix ~ site, data = sapro_meta, method = "bray")
+sapro_perm
+```
+
+```{r}
+patho <- otus(tm_pathotroph)
+
+patho_meta <- metadata(patho)
+patho_matrix <- OTU_matrix(patho)
+
+patho_NMDS <- fungi_nmds(patho_matrix)
+
+patho_df <- plot_df(patho_NMDS, patho_meta)
+
+patho_plot <- plot_NMDS(patho_df) + labs(title = "Pathotrophs")
+patho_plot
+```
+
+```{r}
+patho_perm <- adonis(patho_matrix ~ site, data = patho_meta, method = "bray")
+patho_perm
+```
+
 ### Community convergence
 
 For ease of use, example code is for bootstrapping the total fungal community. This repeats for symbiotrophs, arbuscular mycorrhizae (AMF), and ectomycorrhizae. The final section (c. Final data) includes the summarized data for all 1000 bootstraps (mean, standard deviation, and standard error).
