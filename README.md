@@ -16,11 +16,19 @@ Data and analysis to accompany Bui et al., "Soil fungal community richness and d
 - species diversity
 - Non-metric Multidimensional Scaling
 
-### Community convergence
+### Redundancy analysis
+
+### Multiple regression on fungal species richness
+
+### Mantel tests
 #### Data
-- boot_data-1000.csv: final results of 1000 bootstrapped iterations of community convergence calculation 
+- sample_coords.csv: geographic locations of sampled trees
 #### Analyses
-- community convergence: for a single community (i.e. tree), we calculated the ratio between the Euclidean distance between site centroids and the Euclidean distance between the community and its own site centroid (Supplemental Figure 2)
+- Mantel tests
+
+### Community convergence
+#### Analyses
+- community convergence: for a single community (i.e. tree), we calculated the ratio between the Bray-Curtis distance between site centroids and the Bray-Curtis distance between the community and its own site centroid (Supplemental Figure 2)
 
 ### Ectomycorrhizal functional traits
 #### Data
