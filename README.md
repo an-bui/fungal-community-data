@@ -1,5 +1,5 @@
 # fungal-community-data
-Data and analysis to accompany Bui et al., "Soil fungal community composition and functional similarity shift across distinct climatic conditions."
+Data and analysis to accompany Bui et al., "Soil fungal community composition and functional similarity shift across distinct climatic conditions." _FEMS Microbiology Ecology_. Published 22 September 2020. https://doi.org/10.1093/femsec/fiaa193
 
 ### Soil characteristics
 #### Data
