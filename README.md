@@ -1,5 +1,5 @@
 # fungal-community-data
-Data and analysis to accompany Bui et al., "Soil fungal community richness and diversity are highest in arid environments along a climatic space-for-time substitution."
+Data and analysis to accompany Bui et al., "Soil fungal community composition and functional similarity shift across distinct climatic conditions."
 
 ### Soil characteristics
 #### Data
