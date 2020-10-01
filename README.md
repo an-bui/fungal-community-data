@@ -1,6 +1,8 @@
 # fungal-community-data
 Data and analysis to accompany Bui et al., "Soil fungal community composition and functional similarity shift across distinct climatic conditions." _FEMS Microbiology Ecology_. Published 22 September 2020. https://doi.org/10.1093/femsec/fiaa193
 
+[![DOI](https://zenodo.org/badge/221615362.svg)](https://zenodo.org/badge/latestdoi/221615362)
+
 ### Soil characteristics
 #### Data
 - soil_data.csv: data for subset (n = 27) of trees sampled, with site, %N, %C, P (mg/kg soil), %organic matter, total exchange capacity (meq/100g soil), NO3 (ppm), NH4 (ppm), pH, gravimetric water content (g). 
